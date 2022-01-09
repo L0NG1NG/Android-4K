@@ -3,12 +3,14 @@ package com.longing.sunset
 import android.animation.AnimatorSet
 import android.animation.ArgbEvaluator
 import android.animation.ObjectAnimator
-import androidx.appcompat.app.AppCompatActivity
+import android.animation.ValueAnimator
 import android.os.Bundle
-import android.util.Log
 import android.view.View
 import android.view.animation.AccelerateInterpolator
-import android.view.animation.AnimationSet
+import android.view.animation.Animation.INFINITE
+import android.view.animation.DecelerateInterpolator
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.animation.addListener
 import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
@@ -28,6 +30,16 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private val sunYStart: Float by lazy {
+        sunView.top.toFloat()
+    }
+    private val sunYEnd: Float by lazy {
+        skyView.bottom.toFloat()
+    }
+
+    private var currentAnimator: AnimatorSet? = null
+    private var isNight = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -36,17 +48,32 @@ class MainActivity : AppCompatActivity() {
         sunView = findViewById(R.id.sun)
         skyView = findViewById(R.id.sky)
 
+        val sunAnimator = ValueAnimator.ofFloat(1f, 0.8f, 1f).apply {
+            repeatCount = INFINITE
+            duration = 2000
+            addUpdateListener {
+                sunView.scaleX = it.animatedValue as Float
+                sunView.scaleY = it.animatedValue as Float
+            }
+        }
+        sunAnimator.start()
+
         sceneView.setOnClickListener {
-            startAnimation()
+            currentAnimator?.let {
+                it.removeAllListeners()
+                it.cancel()
+            }
+            if (!isNight) {
+                startSunsetAnimation()
+            } else {
+                startSunriseAnimation()
+            }
 
         }
 
     }
 
-    private fun startAnimation() {
-        val sunYStart = sunView.top.toFloat()
-        val sunYEnd = skyView.bottom.toFloat()
-
+    private fun startSunsetAnimation() {
         val heightAnimator = ObjectAnimator
             .ofFloat(sunView, "y", sunYStart, sunYEnd)
             .setDuration(3000)
@@ -62,11 +89,48 @@ class MainActivity : AppCompatActivity() {
             .setDuration(1500)
         nightSkyAnimator.setEvaluator(ArgbEvaluator())
 
+        currentAnimator = AnimatorSet().apply {
+            play(heightAnimator)
+                .with(sunsetSkyAnimator)
+                .before(nightSkyAnimator)
 
-        val animatorSet = AnimatorSet()
-        animatorSet.play(heightAnimator)
-            .with(sunsetSkyAnimator)
-            .before(nightSkyAnimator)
-        animatorSet.start()
+            addListener(onEnd = {
+                isNight = true
+            })
+
+        }.also { it.start() }
+
+    }
+
+    private fun startSunriseAnimation() {
+        //reset sunView position
+        sunView.y = sunYEnd
+
+        val heightAnimator = ObjectAnimator
+            .ofFloat(sunView, "y", sunYEnd, sunYStart)
+            .setDuration(3000)
+        heightAnimator.interpolator = DecelerateInterpolator()
+
+        val sunriseSkyAnimator = ObjectAnimator
+            .ofInt(skyView, "backgroundColor", sunsetSkyColor, blueSkyColor)
+            .setDuration(3000)
+        sunriseSkyAnimator.setEvaluator(ArgbEvaluator())
+
+        val nightSkyAnimator = ObjectAnimator
+            .ofInt(skyView, "backgroundColor", nightSkyColor, sunsetSkyColor)
+            .setDuration(1500)
+        nightSkyAnimator.setEvaluator(ArgbEvaluator())
+
+        currentAnimator = AnimatorSet().apply {
+            play(sunriseSkyAnimator)
+                .with(heightAnimator)
+                .after(nightSkyAnimator)
+
+            addListener(onEnd = {
+                isNight = false
+            })
+
+        }.also { it.start() }
+
     }
 }
